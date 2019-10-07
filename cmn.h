@@ -5,61 +5,7 @@
 #include "stdlib.h"
 #include "string.h"
 #include "math.h"
-
-
-#define M_PI       3.14159265358979323846
-
-//screen dimensions
-#define W 1024
-#define W2 512
-#define H 640
-#define H2 320
-
-//view angles
-#define AW 128
-#define AH 64
-#define AW2 80
-#define AH2 40
-//screen pixels per degree
-#define HAH 8
-#define WAW 8
-
-#define LIP(x, a, b) (((a)*(x))/(b)) 
-
-#define LIP_FT(x, y, a, b) ( ((x)*((b)-(a)) + (y)*(a))/(b) ) 
-
-typedef union
-{
-	unsigned int i;
-	unsigned char c[4];
-}_clr;
-
-#define CA 3
-#define CR 2
-#define CG 1
-#define CB 0
-
-//typical colors
-unsigned int CLR_ORNG = 0xFFFF8800;
-unsigned int CLR_YEL1 = 0xFFAA9960;
-unsigned int CLR_BRED = 0xFFFF0000;
-unsigned int CLR_GRAY = 0xFF808080;
-unsigned int CLR_LGRAY = 0xFFA0A0A0;
-
-unsigned int CLR_BLUE = 0xFF0080FF;
-unsigned int CLR_DBLUE = 0xFF000770;
-
-unsigned int CLR_FUCIA = 0xFFAA00CC;
-
-unsigned int CLR_GREEN = 0xFF22BB44;
-unsigned int CLR_DGREEN = 0xFF004020;
-
-unsigned int CLR_LBROWN = 0xFF503020;
-unsigned int CLR_DBROWN = 0xFF281611;
-
-#define FREEIF( p ) if( NULL != p ) free(p); p=NULL;
-#define MALSET( p, s ) p = malloc(s); memset( p, 0, s);
-
+#include "clr.h"
 
 int ang_norm( int a )
 {
@@ -69,10 +15,8 @@ int ang_norm( int a )
 	return a;
 }
 
-
-
 //scale & distance coeff
-#define PERDST 150
+#define PERDST 160
 
 //precalculated cos, sin, depth, scale
 float pcCOS[360*8];
@@ -83,16 +27,18 @@ float pcScale[PERDST+1];
 #define ANGWR180( a ) while( (a) >= 180 ) (a)-=360; while( (a) < -180 ) (a)+=360;
 #define ANGWR036( a ) while( (a) < 0 ) (a)+=360; while( (a) >= 360 ) (a)-=360;
 
+#define ANGN360( a ) ((a) <0)?((a)+360):(((a) >=360)?((a)-360):(a))
+
 #define MSIN( ang ) ( pcSIN[(int)((ang)*8)] )
 #define MCOS( ang ) ( pcCOS[(int)((ang)*8)] )
 
-#define DSNEAR 4
-#define DSMED 15
+#define DSNEAR 5
+#define DSMED 20
 
 void c_precalc()
 {
 	int i=0;
-	int h_med = 10;
+	int h_med = 20;
 	int h_near = 200;
 	int h_sum = 0;
 	float a = 0.0;
@@ -118,17 +64,17 @@ void c_precalc()
 		if( i < DSNEAR )
 		{
 			pcDepth[i] = LIP_FT( h_near, h_med, i, DSNEAR );
-			pcScale[i] = LIP_FT( 160.0, 100.0, i, DSNEAR );
+			pcScale[i] = LIP_FT( 200.0, 80.0, i, DSNEAR );
 		}
 		else if( i < DSMED )
 		{
 			pcDepth[i] = LIP_FT( h_med, 1, i- DSNEAR, DSMED - DSNEAR );
-			pcScale[i] = LIP_FT( 100.0, 80.0, i - DSNEAR, DSMED - DSNEAR);
+			pcScale[i] = LIP_FT( 80.0, 40.0, i - DSNEAR, DSMED - DSNEAR);
 		}
 		else 
 		{
 			pcDepth[i] = 1;
-			pcScale[i] = LIP_FT( 80.0, 2.0, i, PERDST );
+			pcScale[i] = LIP_FT( 40.0, 4.0, i, PERDST );
 		}
 
 		h_sum += pcDepth[i];
@@ -138,43 +84,6 @@ void c_precalc()
 }
 
 
-_clr *gclr_base = NULL;
-_clr *gclr_env = NULL;
-_clr *gclr_res = NULL;
-
-int gclr_lc = 0;
-
-
-
-typedef struct
-{
-	unsigned short w;
-	unsigned short h;
-	void* data;
-}_imgw;
-
-
-_imgw* imgw_init(unsigned short  w, unsigned short  h)
-{
-	_imgw *ret = NULL;
-	
-	MALSET(ret,sizeof(_imgw));
-	MALSET(ret->data,w*h*4);
-	ret->w = w;
-	ret->h = h;
-	return ret;
-}
-
-
-#define SPIX( IM, X, Y, C ) if( (X)>0 && (X)<(IM)->w && (Y)>0 && (Y)<(IM)->h ) memcpy( &((int*)(IM)->data)[(IM)->w*(Y) + (X)],&(C), 4 )
-
-
-void SWAP(int *a, int *b)
-{
-	*a = *a + *b; 
-	*b = *a - *b; 
-	*a = *a - *b;
-}
 
 int dls_i;
 int dls_dx;
@@ -233,37 +142,6 @@ int draw_line( _imgw *img, int xfr, int yfr, int xto, int yto, unsigned int clr 
 			SPIX( img, dls_px, dls_py, clr );
 		}
 	}
-}
-
-char *cstr(char *in)
-{
-	char *ret = NULL;
-	int len = 0;
-	
-	if( NULL == in ) return NULL;
-	if( (len = strlen(in)) <= 0 ) return NULL;
-	
-	ret = (char*)malloc( len + 1);
-	strncpy(ret,in,len);
-	ret[len] = '\0';
-	
-	return ret;
-}
-
-void** LADD( void** lold, void* lel, int *lcnt )
-{
-	int i=0;
-	void **lnew = NULL;
-	
-	MALSET( lnew, ( (*lcnt) + 1)*sizeof(void*) );
-	
-	for( i=0; i<(*lcnt); i++ ) lnew[i] = lold[i];
-	
-	FREEIF(lold);
-	
-	lnew[(*lcnt)] = lel;	
-	(*lcnt)++;
-	return lnew;
 }
 
 
